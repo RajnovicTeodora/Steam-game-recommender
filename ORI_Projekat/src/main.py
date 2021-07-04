@@ -4,6 +4,8 @@ from sklearn.feature_extraction.text import CountVectorizer
 from sklearn.metrics import mean_squared_error
 from sklearn.metrics import mean_absolute_error
 
+N = 20
+
 
 def clean_string(text):
     return text.replace(" ", "").lower()
@@ -19,9 +21,9 @@ if __name__ == '__main__':
 
     # Remove negatively reviewed games
     game_df = game_df[game_df['all_reviews'].str.contains('Negative') == False]
-    #game_df = game_df[game_df['all_reviews'].str.contains('Mixed') == False]
+    # game_df = game_df[game_df['all_reviews'].str.contains('Mixed') == False]
 
-    # Set hours to 1 if action is purchase
+    # Set hours to 0.1 if action is purchase
     user_df.loc[(user_df['Action'] == 'purchase') & (user_df['Hours'] == 1.0), 'Hours'] = 0.1
 
     # Remove purchased row if game has been played
@@ -46,23 +48,23 @@ if __name__ == '__main__':
     # Compute the Cosine Similarity matrix using the column
 
     # CountVectorizer converts strings to numerical vectors
-    # stop_words - most frequent words that give no meaning, we remove them
+    # stop_words - most frequent words that give no meaning
     count = CountVectorizer(stop_words='english')
 
     count_matrix = count.fit_transform(game_df['release_date_developer_publisher_popular_tags_game_details_genre'])
     cosine_similarity = cosine_similarity(count_matrix, count_matrix)
 
+    # Unique users and games
     unique_users = user_df.sort_values(['UserID']).drop_duplicates(['UserID'], keep='first')
     unique_games = game_df['name'].unique()
 
     recommendations_df = pandas.DataFrame(columns=['UserID', 'Games', 'Playtime', 'Recommended Games', 'Predicted', 'MAE', 'RMSE', 'Accuracy'])
-    print(len(unique_users))
-    print(len(unique_games))
 
     # Make random test users
     random_users = unique_users.sample(150)
 
     for idx, row in random_users.iterrows():
+        print(row['UserID'])
         user_games = list()
         recommendations = list()
 
@@ -72,6 +74,7 @@ if __name__ == '__main__':
         user_games.append([game for game in user_df[user_df['UserID'] == row['UserID']]['Game'] if game in unique_games])
         if len(user_games[0]) <= 1:
             continue
+
         for game in user_games[0]:
             top_n_games = list()
             game_idx = game_df.index[game_df['name'] == game].tolist()[0]
@@ -88,11 +91,10 @@ if __name__ == '__main__':
             # Index of current game that we are predicting for
             user_games_prediction.append(user_df.loc[(user_df['UserID'] == row['UserID']) & (user_df['Game'] == game)]['Hours'].values[0])
 
-            # Top k similar games
-            similar_games = similarity[1:20 + 1]
+            # Top N similar games
+            similar_games = similarity[1:N + 1]
 
             # Make predictions
-            # For similar games
             for i in similar_games:
 
                 denominator = 0.0
@@ -139,20 +141,20 @@ if __name__ == '__main__':
         recommendations = game_df['name'].iloc[recommendations].tolist()
         accuracy = len(set(recommendations) & set(user_games[0])) / float(len(user_games[0]))
 
-        print(accuracy)
-
         user_games_prediction = [str(a) for a in user_games_prediction]
         recommendation_predictions = [str(a) for a in recommendation_predictions]
         user_games_print = ','.join(user_games[0])
         recommendation_print = ','.join(recommendations)
         playtime = ','.join(user_games_prediction)
         predicted = ','.join(recommendation_predictions)
-        recommendations_df = recommendations_df.append({'UserID': row['UserID'], 'Games': user_games_print,
+        data = {'UserID': row['UserID'], 'Games': user_games_print,
                                                         'Playtime': playtime,
                                                         'Recommended Games': recommendation_print,
                                                         'Predicted': predicted,
                                                         'MAE': mae,
                                                         'RMSE': rmse,
-                                                        'Accuracy': accuracy}, ignore_index=True)
+                                                        'Accuracy': accuracy}
+        recommendations_df = recommendations_df.append(data, ignore_index=True)
+        print(data)
 
     recommendations_df.to_csv("data/recommendation.csv")
